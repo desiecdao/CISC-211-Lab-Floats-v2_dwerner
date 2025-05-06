@@ -13,7 +13,7 @@
 .type nameStr,%gnu_unique_object
     
 /*** STUDENTS: Change the next line to your name!  **/
-nameStr: .asciz "Inigo Montoya"  
+nameStr: .asciz "Desiree Werner"  
  
 .align
 
@@ -80,6 +80,32 @@ nanValue: .word 0x7FFFFFFF
  .type initVariables,%function
 initVariables:
     /* YOUR initVariables CODE BELOW THIS LINE! Don't forget to push and pop! */
+PUSH {r4, r5, lr}
+
+    MOV r5, 0                 @ r5 = 0
+
+    LDR r4, =f0               @ Initialize all variables in order
+    STR r5, [r4]              @ f0
+    STR r5, [r4, #4]          @ sb0
+    STR r5, [r4, #8]          @ storedExp0
+    STR r5, [r4, #12]         @ realExp0
+    STR r5, [r4, #16]         @ mant0
+
+    LDR r4, =f1
+    STR r5, [r4]
+    STR r5, [r4, #4]
+    STR r5, [r4, #8]
+    STR r5, [r4, #12]
+    STR r5, [r4, #16]
+
+    LDR r4, =fMax
+    STR r5, [r4]
+    STR r5, [r4, #4]
+    STR r5, [r4, #8]
+    STR r5, [r4, #12]
+    STR r5, [r4, #16]
+
+    POP {r4, r5, pc}
 
     /* YOUR initVariables CODE ABOVE THIS LINE! Don't forget to push and pop! */
 
@@ -97,7 +123,11 @@ initVariables:
 .type getSignBit,%function
 getSignBit:
     /* YOUR getSignBit CODE BELOW THIS LINE! Don't forget to push and pop! */
-
+ PUSH {r2, lr}
+    LDR r2, [r0]              @ Load float
+    LSR r2, r2, #31           @ Shift bit 31 to bit 0
+    STR r2, [r1]              @ Store to destination
+    POP {r2, pc}
     /* YOUR getSignBit CODE ABOVE THIS LINE! Don't forget to push and pop! */
     
 
@@ -118,7 +148,15 @@ getSignBit:
 .type getExponent,%function
 getExponent:
     /* YOUR getExponent CODE BELOW THIS LINE! Don't forget to push and pop! */
-    
+     PUSH {r2, r3, lr}
+    LDR r2, [r0]                      @ Load float
+    LDR r3, =0x7F800000
+    AND r0, r2, r3                    @ Mask exponent
+    LSR r0, r0, #23                   @ Shift into position
+
+    LDR r3, =127
+    SUB r1, r0, r3                    @ real = stored - 127
+    POP {r2, r3, pc}
     /* YOUR getExponent CODE ABOVE THIS LINE! Don't forget to push and pop! */
    
 
@@ -136,7 +174,15 @@ getExponent:
 .type getMantissa,%function
 getMantissa:
     /* YOUR getMantissa CODE BELOW THIS LINE! Don't forget to push and pop! */
-    
+    PUSH {r2, r3, lr}
+    LDR r2, [r0]                     @ Load float
+    LDR r3, =0x007FFFFF
+    AND r0, r2, r3                   @ Extract raw mantissa
+
+    MOV r1, r0
+    LDR r3, =0x00800000             @ Bit 23 mask
+    ORR r1, r1, r3                  @ Add implied 1
+    POP {r2, r3, pc}
     /* YOUR getMantissa CODE ABOVE THIS LINE! Don't forget to push and pop! */
    
 
@@ -157,6 +203,28 @@ getMantissa:
 asmIsZero:
     /* YOUR asmIsZero CODE BELOW THIS LINE! Don't forget to push and pop! */
 BX LR    
+     PUSH {r1, lr}
+    LDR r1, [r0]
+    LDR r0, =0
+    CMP r1, r0
+    BEQ plus_zero
+
+    LDR r0, =0x80000000
+    CMP r1, r0
+    BEQ minus_zero
+
+    MOV r0, 0
+    B end_zero
+
+plus_zero:
+    MOV r0, 1
+    B end_zero
+
+minus_zero:
+    MOV r0, -1
+
+end_zero:
+    POP {r1, pc}
     /* YOUR asmIsZero CODE ABOVE THIS LINE! Don't forget to push and pop! */
    
 
@@ -177,6 +245,29 @@ BX LR
 asmIsInf:
     /* YOUR asmIsInf CODE BELOW THIS LINE! Don't forget to push and pop! */
 BX LR    
+     PUSH {r1, lr}
+    LDR r1, [r0]
+    LDR r0, =0x7F800000
+    CMP r1, r0
+    BEQ plus_inf
+
+    LDR r0, =0xFF800000
+    CMP r1, r0
+    BEQ minus_inf
+
+    MOV r0, 0
+    B end_inf
+
+plus_inf:
+    MOV r0, 1
+    B end_inf
+
+minus_inf:
+    MOV r0, -1
+
+end_inf:
+    POP {r1, pc}
+
     /* YOUR asmIsInf CODE ABOVE THIS LINE! Don't forget to push and pop! */
    
 
@@ -217,6 +308,80 @@ asmFmax:
     /* YOUR asmFmax CODE BELOW THIS LINE! VVVVVVVVVVVVVVVVVVVVV  */
     
 BX LR    
+     PUSH {r4-r7, lr}
+
+    @ Load both values
+    LDR r4, =f0
+    LDR r5, [r4]
+    LDR r6, =f1
+    LDR r7, [r6]
+
+    CMP r5, r7
+    BGT use_f0
+    BLT use_f1
+
+use_f0:   @ f0 is greater or equal
+    LDR r0, =f0
+    LDR r1, =fMax
+    LDR r2, [r0]
+    STR r2, [r1]
+    BL unpack_f0
+    B done
+
+use_f1:   @ f1 is greater
+    LDR r0, =f1
+    LDR r1, =fMax
+    LDR r2, [r0]
+    STR r2, [r1]
+    BL unpack_f1
+
+done:
+    POP {r4-r7, pc}
+
+/************************************************************
+ Helper: unpack_f0 ? Unpack f0 into *_Max fields
+*************************************************************/
+unpack_f0:
+    PUSH {lr}
+    LDR r0, =f0
+    LDR r1, =sbMax
+    BL getSignBit
+
+    LDR r0, =f0
+    BL getExponent
+    LDR r2, =storedExpMax
+    STR r0, [r2]
+    LDR r2, =realExpMax
+    STR r1, [r2]
+
+    LDR r0, =f0
+    BL getMantissa
+    LDR r2, =mantMax
+    STR r1, [r2]
+    POP {pc}
+
+/************************************************************
+ Helper: unpack_f1 ? Unpack f1 into *_Max fields
+*************************************************************/
+unpack_f1:
+    PUSH {lr}
+    LDR r0, =f1
+    LDR r1, =sbMax
+    BL getSignBit
+
+    LDR r0, =f1
+    BL getExponent
+    LDR r2, =storedExpMax
+    STR r0, [r2]
+    LDR r2, =realExpMax
+    STR r1, [r2]
+
+    LDR r0, =f1
+    BL getMantissa
+    LDR r2, =mantMax
+    STR r1, [r2]
+    POP {pc}
+
     /* YOUR asmFmax CODE ABOVE THIS LINE! ^^^^^^^^^^^^^^^^^^^^^  */
 
    
